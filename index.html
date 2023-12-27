@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>Squardle Solver</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      body {
+        font-family: monospace;
+        font-size: 16px;
+      }
+      #grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        grid-gap: 10px;
+        place-items: center;
+      }
+      .grid-item {
+        width: 100%;
+        height: 4rem;
+        padding: 0;
+        text-align: center;
+        font-size: 2rem;
+        border: 1px solid #ccc;
+        font-weight: bold;
+      }
+      button {
+        width: 100%;
+        padding: 0.5rem 1rem;
+        margin: 1rem 0 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Squaredle Solver</h2>
+    <div id="grid">
+      <input type="text" maxlength="1" class="grid-item" value="I" autofocus />
+      <input type="text" maxlength="1" class="grid-item" value="R" />
+      <input type="text" maxlength="1" class="grid-item" value="N" />
+      <input type="text" maxlength="1" class="grid-item" value="O" />
+      <input type="text" maxlength="1" class="grid-item" value="C" />
+      <input type="text" maxlength="1" class="grid-item" value="O" />
+      <input type="text" maxlength="1" class="grid-item" value="I" />
+      <input type="text" maxlength="1" class="grid-item" value="T" />
+      <input type="text" maxlength="1" class="grid-item" value="N" />
+      <input type="text" maxlength="1" class="grid-item" value="S" />
+      <input type="text" maxlength="1" class="grid-item" value="A" />
+      <input type="text" maxlength="1" class="grid-item" value="T" />
+      <input type="text" maxlength="1" class="grid-item" value="I" />
+      <input type="text" maxlength="1" class="grid-item" value="Z" />
+      <input type="text" maxlength="1" class="grid-item" value="E" />
+      <input type="text" maxlength="1" class="grid-item" value="D" />
+    </div>
+    <button type="button" onclick="solve()">Solve</button>
+    <div id="solution"></div>
+    <script>
+      async function fetchAndDecompress(url) {
+        const response = await fetch(url);
+        const decompressionStream = new DecompressionStream("gzip");
+        const decompressedStream =
+          response.body.pipeThrough(decompressionStream);
+        const reader = decompressedStream.getReader();
+        let text = "";
+        let done, value;
+        while (({ done, value } = await reader.read()) && !done) {
+          text += new TextDecoder().decode(value, { stream: true });
+        }
+        return text;
+      }
+
+      let words = new Set();
+      let partialWords = new Set();
+
+      fetchAndDecompress("words.txt.gz").then((text) => {
+        text.split("\n").forEach(words.add, words);
+        words.forEach((word) => {
+          let partial = "";
+          for (let i = 0; i < word.length; i++) {
+            partial += word[i];
+            partialWords.add(partial);
+          }
+        });
+      });
+
+      function squaredleSolver(grid) {
+        let paths = [];
+        for (let i = 0; i < 4; i++) {
+          for (let j = 0; j < 4; j++) {
+            let stack = [[{ x: i, y: j }, grid[i][j], new Set([`${i},${j}`])]];
+            while (stack.length > 0) {
+              let [{ x, y }, word, visited] = stack.pop();
+
+              if (!partialWords.has(word)) {
+                continue;
+              }
+
+              if (words.has(word)) {
+                paths.push([word, Array.from(visited)]);
+              }
+
+              [
+                [-1, -1],
+                [-1, 0],
+                [-1, 1],
+                [0, -1],
+                [0, 1],
+                [1, -1],
+                [1, 0],
+                [1, 1],
+              ].forEach(([dx, dy]) => {
+                let nx = x + dx,
+                  ny = y + dy;
+                let key = `${nx},${ny}`;
+                if (
+                  nx >= 0 &&
+                  nx < 4 &&
+                  ny >= 0 &&
+                  ny < 4 &&
+                  !visited.has(key)
+                ) {
+                  let newVisited = new Set(visited);
+                  newVisited.add(key);
+                  stack.push([
+                    { x: nx, y: ny },
+                    word + grid[nx][ny],
+                    newVisited,
+                  ]);
+                }
+              });
+            }
+          }
+        }
+        return paths;
+      }
+
+      function solve() {
+        const paths = squaredleSolver(getGridValues());
+        const solutions = Array.from(new Set(paths.map((path) => path[0])));
+        solutions.sort((a, b) => a.length - b.length);
+        const grouped = {};
+        solutions.forEach((word) => {
+          const length = word.length;
+          if (!grouped[length]) {
+            grouped[length] = [];
+          }
+          grouped[length].push(word);
+        });
+        const html = [""];
+        Object.keys(grouped).forEach((key) => {
+          html.push(`<p>${grouped[key].join(", ")}</p>`);
+        });
+        html.push("");
+        document.getElementById("solution").innerHTML = html.join("");
+      }
+      document.querySelectorAll(".grid-item").forEach((item, idx, items) => {
+        item.addEventListener("keyup", (e) => {
+          if (e.key.match(/[A-Za-z]/) && e.key.length === 1) {
+            item.value = e.key.toUpperCase(); // replace current letter
+            if (idx < items.length - 1) {
+              items[idx + 1].focus(); // focus next textbox
+            }
+          }
+        });
+      });
+      function getGridValues() {
+        const gridItems = document.querySelectorAll(".grid-item");
+        const gridArray = [];
+        let row = [];
+
+        gridItems.forEach((item, index) => {
+          row.push(item.value.toUpperCase()); // Add the textbox value to the current row
+          if ((index + 1) % 4 === 0) {
+            // After every 4 elements, start a new row
+            gridArray.push(row);
+            row = [];
+          }
+        });
+
+        return gridArray;
+      }
+    </script>
+  </body>
+</html>
