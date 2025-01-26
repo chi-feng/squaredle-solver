@@ -1,188 +1,277 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
+
+<head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width" />
-    <title>Squardle Solver</title>
+    <title>Squaredle Solver</title>
     <style>
-      *,
-      *::before,
-      *::after {
-        box-sizing: border-box;
-      }
-      body {
-        font-family: monospace;
-        font-size: 16px;
-      }
-      #grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        grid-gap: 10px;
-        place-items: center;
-      }
-      .grid-item {
-        width: 100%;
-        height: 4rem;
-        padding: 0;
-        text-align: center;
-        font-size: 2rem;
-        border: 1px solid #ccc;
-        font-weight: bold;
-      }
-      button {
-        width: 100%;
-        padding: 0.5rem 1rem;
-        margin: 1rem 0 0;
-      }
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: sans-serif;
+            margin: 1rem;
+        }
+
+        #gridInput {
+            width: 100%;
+            font-family: monospace;
+            padding: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        #visualGrid {
+            position: relative;
+            margin: 2rem 0;
+            min-height: 200px;
+        }
+
+        .grid-cell {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border: 2px solid #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            background: white;
+            border-radius: 4px;
+            z-index: 1;
+        }
+
+        .starting-cell {
+            background: #f444 !important;
+        }
+
+        #gridOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .path-line {
+            stroke: #f444;
+            stroke-width: 16;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+        }
+
+        #solutions {
+            columns: 3;
+            column-gap: 2rem;
+        }
+
+        .solution-group {
+            break-inside: avoid;
+            margin-bottom: 1rem;
+        }
+
+        .solution-word {
+            cursor: pointer;
+            padding: 0.25rem;
+        }
+
+        .solution-word:hover {
+            background: #f0f0f0;
+        }
     </style>
-  </head>
-  <body>
-    <h2>Squaredle Solver</h2>
-    <div id="grid">
-      <input type="text" maxlength="1" class="grid-item" value="I" autofocus />
-      <input type="text" maxlength="1" class="grid-item" value="R" />
-      <input type="text" maxlength="1" class="grid-item" value="N" />
-      <input type="text" maxlength="1" class="grid-item" value="O" />
-      <input type="text" maxlength="1" class="grid-item" value="C" />
-      <input type="text" maxlength="1" class="grid-item" value="O" />
-      <input type="text" maxlength="1" class="grid-item" value="I" />
-      <input type="text" maxlength="1" class="grid-item" value="T" />
-      <input type="text" maxlength="1" class="grid-item" value="N" />
-      <input type="text" maxlength="1" class="grid-item" value="S" />
-      <input type="text" maxlength="1" class="grid-item" value="A" />
-      <input type="text" maxlength="1" class="grid-item" value="T" />
-      <input type="text" maxlength="1" class="grid-item" value="I" />
-      <input type="text" maxlength="1" class="grid-item" value="Z" />
-      <input type="text" maxlength="1" class="grid-item" value="E" />
-      <input type="text" maxlength="1" class="grid-item" value="D" />
-    </div>
-    <button type="button" onclick="solve()">Solve</button>
-    <div id="solution"></div>
+</head>
+
+<body>
+    <h1>Squaredle Solver</h1>
+    <textarea id="gridInput" rows="4" placeholder="Enter grid (letters only, spaces for gaps)">
+IRNO
+COIT
+NSAT
+IZED</textarea>
+    <button onclick="solve()">Solve</button>
+    <div id="visualGrid"></div>
+    <div id="solutions"></div>
+
     <script>
-      async function fetchAndDecompress(url) {
-        const response = await fetch(url);
-        const decompressionStream = new DecompressionStream("gzip");
-        const decompressedStream =
-          response.body.pipeThrough(decompressionStream);
-        const reader = decompressedStream.getReader();
-        let text = "";
-        let done, value;
-        while (({ done, value } = await reader.read()) && !done) {
-          text += new TextDecoder().decode(value, { stream: true });
-        }
-        return text;
-      }
+        let dictionary = new Set();
+        let prefixDictionary = new Set();
+        let dictionaryLoaded = false;
 
-      let words = new Set();
-      let partialWords = new Set();
+        // Load dictionary
+        (async function init() {
+            const response = await fetch('words.txt.gz');
+            const ds = new DecompressionStream('gzip');
+            const stream = response.body.pipeThrough(ds);
+            const reader = stream.getReader();
+            let text = '';
 
-      fetchAndDecompress("words.txt.gz").then((text) => {
-        text.split("\n").forEach(words.add, words);
-        words.forEach((word) => {
-          let partial = "";
-          for (let i = 0; i < word.length; i++) {
-            partial += word[i];
-            partialWords.add(partial);
-          }
-        });
-      });
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                text += new TextDecoder().decode(value);
+            }
 
-      function squaredleSolver(grid) {
-        let paths = [];
-        for (let i = 0; i < 4; i++) {
-          for (let j = 0; j < 4; j++) {
-            let stack = [[{ x: i, y: j }, grid[i][j], new Set([`${i},${j}`])]];
-            while (stack.length > 0) {
-              let [{ x, y }, word, visited] = stack.pop();
-
-              if (!partialWords.has(word)) {
-                continue;
-              }
-
-              if (words.has(word)) {
-                paths.push([word, Array.from(visited)]);
-              }
-
-              [
-                [-1, -1],
-                [-1, 0],
-                [-1, 1],
-                [0, -1],
-                [0, 1],
-                [1, -1],
-                [1, 0],
-                [1, 1],
-              ].forEach(([dx, dy]) => {
-                let nx = x + dx,
-                  ny = y + dy;
-                let key = `${nx},${ny}`;
-                if (
-                  nx >= 0 &&
-                  nx < 4 &&
-                  ny >= 0 &&
-                  ny < 4 &&
-                  !visited.has(key)
-                ) {
-                  let newVisited = new Set(visited);
-                  newVisited.add(key);
-                  stack.push([
-                    { x: nx, y: ny },
-                    word + grid[nx][ny],
-                    newVisited,
-                  ]);
+            text.split('\n').forEach(word => {
+                word = word.trim().toLowerCase();
+                if (word) {
+                    dictionary.add(word);
+                    // Build prefix dictionary
+                    let prefix = '';
+                    for (const char of word) {
+                        prefix += char;
+                        prefixDictionary.add(prefix);
+                    }
                 }
-              });
-            }
-          }
+            });
+
+            dictionaryLoaded = true;
+        })();
+
+        function parseGrid() {
+            const text = document.getElementById('gridInput').value.toUpperCase();
+            return text.split('\n').map(row => row.split(''));
         }
-        return paths;
-      }
 
-      function solve() {
-        const paths = squaredleSolver(getGridValues());
-        const solutions = Array.from(new Set(paths.map((path) => path[0])));
-        solutions.sort((a, b) => a.length - b.length);
-        const grouped = {};
-        solutions.forEach((word) => {
-          const length = word.length;
-          if (!grouped[length]) {
-            grouped[length] = [];
-          }
-          grouped[length].push(word);
-        });
-        const html = [""];
-        Object.keys(grouped).forEach((key) => {
-          html.push(`<p>${grouped[key].join(", ")}</p>`);
-        });
-        html.push("");
-        document.getElementById("solution").innerHTML = html.join("");
-      }
-      document.querySelectorAll(".grid-item").forEach((item, idx, items) => {
-        item.addEventListener("keyup", (e) => {
-          if (e.key.match(/[A-Za-z]/) && e.key.length === 1) {
-            item.value = e.key.toUpperCase(); // replace current letter
-            if (idx < items.length - 1) {
-              items[idx + 1].focus(); // focus next textbox
+        function renderGrid(grid) {
+            const container = document.getElementById('visualGrid');
+            container.innerHTML = '';
+
+            // Create SVG overlay
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.id = 'gridOverlay';
+            container.appendChild(svg);
+
+            // Create cell elements
+            grid.forEach((row, i) => {
+                row.forEach((char, j) => {
+                    if (!char.trim()) return;
+
+                    const cell = document.createElement('div');
+                    cell.className = 'grid-cell';
+                    cell.textContent = char;
+                    cell.dataset.x = i;
+                    cell.dataset.y = j;
+                    cell.style.left = `${j * 45}px`;
+                    cell.style.top = `${i * 45}px`;
+                    container.appendChild(cell);
+                });
+            });
+        }
+
+        function findWords(grid) {
+            const words = new Map();
+            const directions = [
+                [-1, -1], [-1, 0], [-1, 1],
+                [0, -1], [0, 1],
+                [1, -1], [1, 0], [1, 1]
+            ];
+
+            function dfs(x, y, path, currentWord, visited) {
+                const normalized = currentWord.toLowerCase();
+
+                if (!prefixDictionary.has(normalized)) return;
+
+                if (dictionary.has(normalized)) {
+                    words.set(currentWord, path);
+                }
+
+                for (const [dx, dy] of directions) {
+                    const nx = x + dx;
+                    const ny = y + dy;
+
+                    if (nx < 0 || ny < 0 ||
+                        nx >= grid.length ||
+                        ny >= grid[nx].length ||
+                        !grid[nx][ny].trim() ||
+                        visited.has(`${nx},${ny}`)) continue;
+
+                    const newPath = [...path, { x: nx, y: ny }];
+                    const newVisited = new Set(visited);
+                    newVisited.add(`${nx},${ny}`);
+
+                    dfs(nx, ny, newPath, currentWord + grid[nx][ny], newVisited);
+                }
             }
-          }
-        });
-      });
-      function getGridValues() {
-        const gridItems = document.querySelectorAll(".grid-item");
-        const gridArray = [];
-        let row = [];
 
-        gridItems.forEach((item, index) => {
-          row.push(item.value.toUpperCase()); // Add the textbox value to the current row
-          if ((index + 1) % 4 === 0) {
-            // After every 4 elements, start a new row
-            gridArray.push(row);
-            row = [];
-          }
-        });
+            grid.forEach((row, i) => {
+                row.forEach((char, j) => {
+                    if (char.trim()) {
+                        dfs(i, j, [{ x: i, y: j }], char, new Set([`${i},${j}`]));
+                    }
+                });
+            });
 
-        return gridArray;
-      }
+            return Array.from(words.entries())
+                .sort((a, b) => a[0].length - b[0].length || a[0].localeCompare(b[0]));
+        }
+        function drawPath(path) {
+            const svg = document.getElementById('gridOverlay');
+            svg.innerHTML = '';
+
+            // Remove previous highlights
+            document.querySelectorAll('.grid-cell').forEach(cell => {
+                cell.classList.remove('starting-cell');
+            });
+
+            // Highlight starting cell
+            const startCell = document.querySelector(`.grid-cell[data-x="${path[0].x}"][data-y="${path[0].y}"]`);
+            if (startCell) {
+                startCell.classList.add('starting-cell');
+            }
+
+            // Draw path
+            const points = path.map(({ x, y }) =>
+                `${y * 45 + 20},${x * 45 + 20}`
+            ).join(' ');
+
+            const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+            polyline.setAttribute('points', points);
+            polyline.classList.add('path-line');
+            svg.appendChild(polyline);
+        }
+
+        function solve() {
+            if (!dictionaryLoaded) {
+                alert('Dictionary is still loading. Please wait...');
+                return;
+            }
+
+            const grid = parseGrid();
+            renderGrid(grid);
+            const results = findWords(grid);
+
+            // Group results by length
+            const groups = results.reduce((acc, [word, path]) => {
+                const length = word.length;
+                acc[length] = acc[length] || [];
+                acc[length].push({ word, path });
+                return acc;
+            }, {});
+
+            // Display results
+            const solutionsDiv = document.getElementById('solutions');
+            solutionsDiv.innerHTML = Object.entries(groups)
+                .map(([length, words]) => `
+          <div class="solution-group">
+            <h3>${length} letters</h3>
+            ${words.map(({ word, path }) => `
+              <div class="solution-word" 
+                   onmouseenter='drawPath(${JSON.stringify(path)})'
+                   onmouseleave="document.getElementById('gridOverlay').innerHTML = ''; 
+              document.querySelectorAll('.grid-cell').forEach(c => c.classList.remove('starting-cell'))">
+                ${word}
+              </div>
+            `).join('')}
+          </div>
+        `).join('');
+        }
     </script>
-  </body>
+</body>
+
 </html>
