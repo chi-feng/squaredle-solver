@@ -1,11 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Squaredle Solver</title>
     <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --text-color: #e0e0e0;
+            --border-color: #333;
+            --highlight-color: #ff4444;
+            --cell-bg: #2a2a2a;
+            --hover-bg: #3a3a3a;
+        }
+
         *,
         *::before,
         *::after {
@@ -13,8 +21,32 @@
         }
 
         body {
-            font-family: sans-serif;
-            margin: 1rem;
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 1rem;
+            background: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1rem;
+        }
+
+        @media (min-width: 768px) {
+            .container {
+                grid-template-columns: 350px 1fr;
+            }
+        }
+
+        .left-panel {
+            position: sticky;
+            top: 1rem;
+            height: fit-content;
         }
 
         #gridInput {
@@ -22,30 +54,51 @@
             font-family: monospace;
             padding: 0.5rem;
             margin-bottom: 1rem;
+            background: var(--cell-bg);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+        }
+
+        button {
+            width: 100%;
+            padding: 0.75rem;
+            background: var(--highlight-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        button:hover {
+            opacity: 0.9;
         }
 
         #visualGrid {
             position: relative;
-            margin: 2rem 0;
+            margin: 1rem 0;
             min-height: 200px;
+            width: 100%;
         }
 
         .grid-cell {
             position: absolute;
             width: 40px;
             height: 40px;
-            border: 2px solid #ccc;
+            border: 2px solid var(--border-color);
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: bold;
-            background: white;
+            background: var(--cell-bg);
             border-radius: 4px;
             z-index: 1;
         }
 
         .starting-cell {
-            background: #f444 !important;
+            background: var(--highlight-color) !important;
         }
 
         #gridOverlay {
@@ -59,44 +112,88 @@
         }
 
         .path-line {
-            stroke: #f444;
+            stroke: var(--highlight-color);
             stroke-width: 16;
             stroke-linecap: round;
             stroke-linejoin: round;
             fill: none;
+            opacity: 0.6;
+        }
+
+        .right-panel {
+            background: var(--cell-bg);
+            border-radius: 8px;
+            padding: 1rem;
+            max-height: calc(100vh - 2rem);
+            overflow-y: auto;
         }
 
         #solutions {
-            columns: 3;
-            column-gap: 2rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 1.5rem;
         }
 
         .solution-group {
             break-inside: avoid;
-            margin-bottom: 1rem;
+        }
+
+        .solution-group h3 {
+            margin-top: 0;
+            margin-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
         }
 
         .solution-word {
             cursor: pointer;
-            padding: 0.25rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
         }
 
         .solution-word:hover {
-            background: #f0f0f0;
+            background: var(--hover-bg);
+        }
+
+        /* Hide textarea after solving */
+        .solved #gridInput {
+            display: none;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 767px) {
+            .container {
+                gap: 2rem;
+            }
+            
+            .left-panel {
+                position: relative;
+                top: 0;
+            }
+            
+            #solutions {
+                grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            }
         }
     </style>
 </head>
 
 <body>
-    <h1>Squaredle Solver</h1>
-    <textarea id="gridInput" rows="4" placeholder="Enter grid (letters only, spaces for gaps)">
+    <div class="container">
+        <div class="left-panel">
+            <h1>Squaredle Solver</h1>
+            <textarea id="gridInput" rows="4" placeholder="Enter grid (letters only, spaces for gaps)">
 IRNO
 COIT
 NSAT
 IZED</textarea>
-    <button onclick="solve()">Solve</button>
-    <div id="visualGrid"></div>
-    <div id="solutions"></div>
+            <button onclick="solve()">Solve</button>
+            <div id="visualGrid"></div>
+        </div>
+        <div class="right-panel">
+            <div id="solutions"></div>
+        </div>
+    </div>
 
     <script>
         let dictionary = new Set();
@@ -142,9 +239,17 @@ IZED</textarea>
             const container = document.getElementById('visualGrid');
             container.innerHTML = '';
 
-            // Create SVG overlay
+            // Calculate cell size based on container width
+            const containerWidth = container.clientWidth;
+            const gridSize = Math.max(grid.length, grid[0].length);
+            const cellSize = Math.min(40, (containerWidth - (gridSize - 1) * 5) / gridSize);
+            const spacing = cellSize + 5;
+
+            // Create SVG overlay with proper dimensions
             const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
             svg.id = 'gridOverlay';
+            svg.style.width = `${spacing * gridSize}px`;
+            svg.style.height = `${spacing * gridSize}px`;
             container.appendChild(svg);
 
             // Create cell elements
@@ -157,11 +262,16 @@ IZED</textarea>
                     cell.textContent = char;
                     cell.dataset.x = i;
                     cell.dataset.y = j;
-                    cell.style.left = `${j * 45}px`;
-                    cell.style.top = `${i * 45}px`;
+                    cell.style.left = `${j * spacing}px`;
+                    cell.style.top = `${i * spacing}px`;
+                    cell.style.width = `${cellSize}px`;
+                    cell.style.height = `${cellSize}px`;
                     container.appendChild(cell);
                 });
             });
+
+            // Mark as solved to hide the input
+            document.body.classList.add('solved');
         }
 
         function findWords(grid) {
@@ -210,6 +320,7 @@ IZED</textarea>
             return Array.from(words.entries())
                 .sort((a, b) => a[0].length - b[0].length || a[0].localeCompare(b[0]));
         }
+
         function drawPath(path) {
             const svg = document.getElementById('gridOverlay');
             svg.innerHTML = '';
@@ -225,9 +336,13 @@ IZED</textarea>
                 startCell.classList.add('starting-cell');
             }
 
-            // Draw path
+            // Calculate cell size and spacing
+            const cellSize = parseInt(startCell.style.width);
+            const spacing = cellSize + 5;
+
+            // Draw path with adjusted coordinates
             const points = path.map(({ x, y }) =>
-                `${y * 45 + 20},${x * 45 + 20}`
+                `${y * spacing + cellSize/2},${x * spacing + cellSize/2}`
             ).join(' ');
 
             const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
@@ -258,20 +373,19 @@ IZED</textarea>
             const solutionsDiv = document.getElementById('solutions');
             solutionsDiv.innerHTML = Object.entries(groups)
                 .map(([length, words]) => `
-          <div class="solution-group">
-            <h3>${length} letters</h3>
-            ${words.map(({ word, path }) => `
-              <div class="solution-word" 
-                   onmouseenter='drawPath(${JSON.stringify(path)})'
-                   onmouseleave="document.getElementById('gridOverlay').innerHTML = ''; 
-              document.querySelectorAll('.grid-cell').forEach(c => c.classList.remove('starting-cell'))">
-                ${word}
-              </div>
-            `).join('')}
-          </div>
-        `).join('');
+                    <div class="solution-group">
+                        <h3>${length} letters (${words.length})</h3>
+                        ${words.map(({ word, path }) => `
+                            <div class="solution-word" 
+                                onmouseenter='drawPath(${JSON.stringify(path)})'
+                                onmouseleave="document.getElementById('gridOverlay').innerHTML = ''; 
+                                document.querySelectorAll('.grid-cell').forEach(c => c.classList.remove('starting-cell'))">
+                                ${word}
+                            </div>
+                        `).join('')}
+                    </div>
+                `).join('');
         }
     </script>
 </body>
-
 </html>
