@@ -225,19 +225,18 @@ IZED</textarea>
         // Display results
         const solutionsDiv = document.getElementById('solutions');
         solutionsDiv.innerHTML = Object.entries(groups)
-          .map(([length, words]) => `
-            <div class="solution-group">
-              <h3>${length} letters</h3>
-              ${words.map(({word, path}) => `
-                <div class="solution-word" 
-                     onmouseenter="drawPath(${JSON.stringify(path)})"
-                     onmouseleave="document.getElementById('gridOverlay').innerHTML = ''">
-                  ${word}
-                </div>
-              `).join('')}
-            </div>
-          `).join('');
-      }
+        .map(([length, words]) => `
+          <div class="solution-group">
+            <h3>${length} letters</h3>
+            ${words.map(({word, path}) => `
+              <div class="solution-word" 
+                   onmouseenter='drawPath(${JSON.stringify(path)})'
+                   onmouseleave="document.getElementById('gridOverlay').innerHTML = ''">
+                ${word}
+              </div>
+            `).join('')}
+          </div>
+        `).join('');
     </script>
   </body>
 </html>
